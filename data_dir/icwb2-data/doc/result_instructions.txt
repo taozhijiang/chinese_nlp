@@ -1,0 +1,97 @@
+Bakeoff 2005 Result Submission Instructions
+
+Thank you for participating in the 2nd International Chinese Word
+Segmentation Bakeoff. Please read this message completely: it
+contains very important information on result submission.
+
+This message contains the instructions for submitting your
+results so that they can be scored. I originally planned to
+update the website to allow you to upload your results, but I
+decided against this for two reasons:
+
+1) Many participants are running tracks that are different from
+   what they signed up for, or wish to submit alternate runs
+   within a track. Writing a web application to handle this
+   correctly and reliably is difficult, and errors cannot be
+   tolerated.
+
+2) Connectivity to the SIGHAN site has been problematic for some
+   participants, especially in China. I do not want cause undue
+   stress on them if there are problems.
+
+Therefore you should submit your results _by_email_ to me at this
+address:
+
+                           tree@sighan.org
+
+The subject of the message should be
+
+                    Bakeoff 2005 Result Submission
+
+The message should be sent by the primary investigator, i.e., the
+one who registered for participation. This is how I will match
+your submission to your registration.
+
+Please use the following conventions:
+
+1) Submit a single archive file (.zip, .rar, .tar.gz, or
+   .tar.bz2) containing your output file(s). Do this even if you
+   are submitting a single result file.
+
+2) The archive should be named with the email user id of the
+   submitter. For example, "tree@sighan.org" would
+   submit "tree.zip".
+
+3) Each test file should be named X_test_result_[OC]_Y.Z where
+
+   X    is the name of the corpus: pku, cityu, as, msr
+   [OC] is whether the result is for the Open or Closed track
+   Y    is an optional identifier (a lower-case letter) for
+          multiple runs of the system
+   Z    is the file suffix, .txt or .utf8
+
+   For example, the results of running the UTF-8 encoded PKU
+   corpus in the closed track in a single run would be
+
+                        pku_test_result_C.utf8
+
+   Running the CP950 version of the Academia Sinica corpus in the
+   open track with two alternate systems would be
+
+                        as_test_result_O_a.txt
+                        as_test_result_O_b.txt
+
+   Note that 'a' and 'b' is used to distinguish two separate runs
+   on this corpus.
+
+4) The deadline for which I will accept result submissions is
+   14:00 GMT on Friday, July 29. Results received after this time
+   will not be scored unless the team can provide me with a
+   *very* good reason to allow the extension (e.g., the building
+   burned down, the national computer network went down, etc.)
+
+   To minimize confusion, 14:00 GMT on 2005/07/29 is:
+
+   07:00 2005/07/29 in San Francisco
+   10:00 2005/07/29 in New York
+   22:00 2005/07/29 in Hong Kong
+   22:00 2005/07/29 in Beijing
+   22:00 2005/07/29 in Taipei
+   22:00 2005/07/29 in Singapore
+   23:00 2005/07/29 in Seoul
+   23:00 2005/07/29 in Tokyo
+
+Answers to Some Common Questions
+
+The AS testing data had the spaces between English words
+inadvertantly removed. You will *not* be penalized for not
+segmenting English text.
+
+The AS training data used full-width space (U+3000, Big Five
+0xA140) to separate tokens. You can use either the full-width
+space or the normal ASCII space (0x20) in your result submission:
+these are scored equally. PLEASE NOTE: this is the *only*
+full-width/half-width normalization that is allowed! Do not
+convert full-width punctuation or Latin characters to half-width,
+these will *not* be scored correctly.
+
