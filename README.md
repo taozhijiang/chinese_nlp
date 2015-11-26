@@ -8,3 +8,13 @@ http://www.52nlp.cn/itenyh%E7%89%88-%E7%94%A8hmm%E5%81%9A%E4%B8%AD%E6%96%87%E5%8
 http://sbp810050504.blog.51cto.com/2799422/1251640
 - TODO：
     没有针对英文单词、标点等处理，也没有窗口化操作
+
+	
+## 主题分类
+- 原理：LDA
+- 依赖：gensim
+- 参考:
+http://blog.itpub.net/16582684/viewspace-1253901/
+https://radimrehurek.com/gensim/models/ldamodel.html
+- TODO:
+	感觉效果不是很好啊
