@@ -11,10 +11,11 @@ http://sbp810050504.blog.51cto.com/2799422/1251640
 
 	
 ## 主题分类
-- 原理：LDA
+- 原理：LDA & Labled LDA
 - 依赖：gensim
 - 参考:
 http://blog.itpub.net/16582684/viewspace-1253901/
 https://radimrehurek.com/gensim/models/ldamodel.html
+https://shuyo.wordpress.com/
 - TODO:
 	感觉效果不是很好啊
