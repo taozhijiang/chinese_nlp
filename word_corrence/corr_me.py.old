@@ -1,0 +1,146 @@
+#!/usr/bin/python3
+
+import os
+import jieba
+import hanzi_util
+import copy
+import pickle
+import math
+
+CURR_DIR = os.getcwd()
+DATA_DIR = os.getcwd() + "/../data_dir/tc-corpus-answer/" 
+STOP_FILE  = CURR_DIR + "/../data_dir/stopwords.txt"
+
+# 'word':[cnt: word-w1:N1 ,word-w2:N2 ]
+train_data = {}
+train_tags = []
+stop_words = []
+
+def build_train_data():
+    global train_data
+    global train_tags
+    global stop_words
+    train_data = {}
+    train_tags = []
+    stop_words = []
+    
+    with open(STOP_FILE, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if line[0] == '#': continue
+            stop_words.append(line)
+        
+    for parent,dirname,filenames in os.walk(DATA_DIR):
+        for filename in filenames:
+            tag_name = filename[:-4]
+            print("正在处理：%s"%(tag_name))
+            train_tags.append(tag_name)
+            line_num = 0
+            with open(DATA_DIR+'/'+filename,'r') as fin:
+                for line in fin:
+                    line_num += 1
+                    if not line_num % 500 : print('LINE:%d'%(line_num))
+                    line = line.strip()
+                    line_t = jieba.cut(line, cut_all=False)
+                    objs = []
+                    for item in line_t:
+                        if item not in stop_words and hanzi_util.is_zhs(item):
+                            if item not in objs: 
+                                objs.append(item)
+                            if item in train_data.keys():
+                                train_data[item]['COUNT'] += 1
+                            else:
+                                #print("ADDING ITEM:%s" %(item));
+                                train_data[item] = {}
+                                train_data[item]['COUNT'] = 1
+                            if tag_name not in train_data[item].keys():
+                                train_data[item][tag_name] = {}
+
+                    #公现指数计算
+                    #我们只计算一个方向的
+                    if len(objs) < 2: continue
+                    #print(objs)
+                    for index_i in range(len(objs) - 1):
+                        for index_j in range(index_i + 1, len(objs)):
+                            #print('%d-%d-%d'%(len(objs),index_i, index_j))
+                            item_i = objs[index_i]
+                            item_j = objs[index_j]
+                            item_t = item_i+'~'+item_j
+                            if item_t in train_data[item_i][tag_name].keys():
+                                train_data[item_i][tag_name][item_t] += 1
+                            else:   #反向的是否存在
+                                train_data[item_i][tag_name][item_t] = 1
+    
+    return
+
+def calc_vector(str):
+    count_all = {}
+    sub_train = []
+    if not str or not len(str):
+        return None
+    line = str.strip()
+    line_t = jieba.cut(line, cut_all=False)
+    objs = []
+    for item in line_t:
+        if item not in stop_words and hanzi_util.is_zhs(item):
+            if item not in train_data.keys():
+               continue
+            if item not in objs:
+                objs.append(item)
+    if len(objs) < 2: return None
+    
+    for index_i in range(len(objs) - 1):
+        for index_j in range(index_i + 1, len(objs)):
+            item_i = objs[index_i]
+            item_j = objs[index_j]
+            item_t = item_i+'~'+item_j
+            sub_train.append(item_t)
+            
+    for item_w in sub_train:
+        item_w = item_w.split('~')
+        item_a = item_w[0]+'~'+item_w[1]
+        item_b = item_w[1]+'~'+item_w[0]
+        count_s = train_data[item_w[0]]['COUNT'] + train_data[item_w[1]]['COUNT']
+        count_all[item_a] = {}
+        for item_t in train_tags:
+            count = 0
+            if item_w[0] in train_data.keys() and \
+            item_t in train_data[item_w[0]].keys() and \
+            item_a in train_data[item_w[0]][item_t].keys():
+                count +=  train_data[item_w[0]][item_t][item_a]
+            if item_w[1] in train_data.keys() and \
+            item_t in train_data[item_w[1]].keys() and \
+            item_b in train_data[item_w[1]][item_t].keys():
+                count +=  train_data[item_w[1]][item_t][item_b]
+            count_all[item_a][item_t] = math.log(count / count_s + 0.0000000001)
+    return count_all        
+        
+    
+if __name__ == '__main__':
+    
+    if not os.path.exists("./dump.dat"):
+        build_train_data()
+        with open("./dump.dat",'wb', -1) as fp:
+            dump_data = []
+            dump_data.append(train_data)
+            dump_data.append(train_tags)
+            dump_data.append(stop_words)
+            pickle.dump(dump_data, fp, -1)
+            del dump_data
+    else:
+        with open("./dump.dat",'rb', -1) as fp:
+            dump_data = pickle.load(fp)
+            train_data = dump_data[0]
+            train_tags = dump_data[1]
+            stop_words = dump_data[2]
+            del dump_data
+        
+    data = calc_vector('此函数是无法直接访问的，所以我们需要导入math模块，然后需要用math的静态对象来调用这个函数。')
+    print(1/4)
+    if data:
+        for (key, val) in data.items():
+            print("字段：%s"%(key))
+            for item in train_tags:
+                print("%s:%f"%(item, val[item]))
+    #print(train_data)
+
