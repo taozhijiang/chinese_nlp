@@ -3,12 +3,7 @@
 #项目更新
 # train[hi-lo][tags] 
 #感觉一个词的词，对区分作用有限
-#分开多线程跑
-# 由于PYTHON语言的原因，测试这里分成多个线程根本没有用到多核计算机的
-# 的优势，其实还是在单个核心上模拟的多线程操作，执行效率没有提升，反而
-# 因为上下文切换的原因降低执行效率
-# 后面用multiprocess，虽然可以用多线程，但是进程间交换数据的开销变得非常
-# 的大，所以：除非IO阻塞复用，否则Python不适合多线程开发
+#分开多线程跑，加快运行速度
 
 CURRENT_VER = 3
 
@@ -18,10 +13,12 @@ import hanzi_util
 import copy
 import pickle
 import math
-import threading
+#import threading
 import socket
 import sys
 import queue
+
+from multiprocessing import Process, Manager, JoinableQueue, Lock
 
 CURR_DIR = os.getcwd()
 DATA_DIR = os.getcwd() + "/../data_dir/tc-corpus-answer/" 
@@ -37,32 +34,35 @@ train_data = {}
 train_tags = ['NULL']  
 stop_words = []
 white_words = []
-
 debug_s_words = []
 
-q = queue.Queue()
-gdb_lock = threading.RLock()
+q = JoinableQueue()
+gdb_lock = Lock()
 
-def term_to_id(term):
-    if term not in train_word_id:
-        #写保护
-        with gdb_lock:
-            if term not in train_word_id:
-                train_word_id.append(term)
-    voca_id = train_word_id.index(term)
-    return voca_id
-
-class TrainThread(threading.Thread):
-    def __init__(self, threadID):
-        threading.Thread.__init__(self)
-        self.threadID = threadID
+class TrainThread(Process):
+    def __init__(self, processid, term_list):
+        self.train_word_id = term_list
+        self.threadID = processid
+        super(TrainThread, self).__init__()
     
+    def term_to_id(self, term):
+        if term not in self.train_word_id:
+            #写保护
+            gdb_lock.acquire()
+            try:
+                if term not in self.train_word_id:
+                    self.train_word_id.append(term)
+            finally:
+                gdb_lock.release()
+        voca_id = self.train_word_id.index(term)
+        return voca_id
+
     def run(self):
         while True:
             try:
                 tag_name = q.get_nowait()
-            except queue.Empty as e:
-                print("Task Queue is empty, return!")
+            except queue.Empty:
+                print("thread=%d,Task Queue is empty, return!" %(self.threadID))
                 return
             print("Thread-%d正在处理:%s，还剩:%d"%(self.threadID, tag_name, q.qsize()))
             line_num = 0
@@ -73,20 +73,23 @@ class TrainThread(threading.Thread):
                         line = fin.readline()
                     except UnicodeDecodeError as e:
                         print('Unicode Error! thread=%d, tag=%s, line_num=%d'%(self.threadID, tag_name, line_num))
-                        continue 
+                        continue
                     if not line:
-                        print('文件已处理完! thread=%d, tag=%s, line_num=%d'%(self.threadID, tag_name, line_num))
+                        print('thread=%d, tag=%s, line_num=%d，文件处理结束！'%(self.threadID, tag_name, line_num))
                         break
                     line_num += 1
-                    if not line_num % 1000 : print('Thread-%d,LINE:%d'%(self.threadID, line_num))
+                    if not line_num % 500 : 
+                        print('Thread-%d,TAG:%s,LINE:%d'%(self.threadID, tag_name, line_num))
+                        print('DEBUG:Thread-%d, stop_len=%d, white_len=%d, term_len=%d'%(self.threadID, len(stop_words), len(white_words), len(self.train_word_id)))
                     line = line.strip()
+                    if not line: continue
                     line_t = jieba.cut(line, cut_all=False)
                     objs = []
                     for item in line_t:
                         if item not in stop_words and hanzi_util.is_zhs(item):
                             if len(item) == 1 and item not in white_words:
                                 continue
-                            item_id = term_to_id(item)
+                            item_id = self.term_to_id(item)
                             if item_id not in objs: 
                                 objs.append(item_id)
                     if len(objs) < 2: continue
@@ -107,6 +110,7 @@ class TrainThread(threading.Thread):
                             else:
                                 sub_train_data[item_i] = {}
                                 sub_train_data[item_i][item_j] = 1
+                
             # sub_train_data
             dump_file = TMP_PATH+tag_name+'.dat'
             with open(dump_file,'wb', -1) as fp:
@@ -133,7 +137,7 @@ def build_train_data():
             if not line or line[0] == '#': continue
             stop_words.append(line)
     print("STOP WORD SIZE:%d\n" %(len(stop_words)))
-     
+
     with open(WHITE_FILE, 'r') as fin:
         for line in fin:
             line = line.strip()
@@ -150,14 +154,18 @@ def build_train_data():
 
     if not os.path.exists(TMP_PATH): os.mkdir(TMP_PATH)
     #分发给各个消费线程去处理
-    threads = []
-    for i in range(10,12):
-        t = TrainThread(i)
-        t.start()
-        threads.append(t)
+    with Manager() as manager:
+        manager_lw = manager.list()
+        threads = []
+        for i in range(10,14):
+            t = TrainThread(i, manager_lw)
+            t.start()
+            threads.append(t)
+        q.join()
 
+    train_word_id = manager_lw
     # Wait until all the tag_train has been processed
-    q.join()
+    
     # 将dump的数据集合起来
     train_data = {}
     for tag_name in train_tags[1:]:
@@ -231,7 +239,7 @@ def calc_vector(str):
             if count == 0 or count_s[item_w] == 0:
                 count_ret[item_tag][item_w] = - math.log(0.0000000001)
             else:
-                count_ret[item_tag][item_w] = - count*math.log(count / count_s[item_w] + 0.0000000001)
+                count_ret[item_tag][item_w] = - math.log(count / count_s[item_w] + 0.0000000001)
                 pair_debug[item_tag][train_word_id[item_1]+'~'+train_word_id[item_2]] = '%d/%d' %(count, count_s[item_w])
     return (count_ret, pair_debug)        
         
@@ -246,7 +254,7 @@ def test_sub(str, put):
     if data:
         predict = {}
         for (tag, val) in data.items():
-            predict[tag] = sum(val.values()) / len(val)
+            predict[tag] = sum(val.values())/ len(val)
         #概率排序
         sorted_list = sorted(predict.items(), key=lambda e:e[1], reverse=False)
         sorted_list = sorted_list[:5]
@@ -263,8 +271,6 @@ if __name__ == '__main__':
     if not os.path.exists(dump_file):
         print("BUILDING DATA....")
         build_train_data()
-        print(debug_s_words)
-        del debug_s_words
         with open(dump_file,'wb', -1) as fp:
             dump_data = []
             dump_data.append(train_word_id)
@@ -291,7 +297,7 @@ if __name__ == '__main__':
         print('DUMP训练结果')
         with open(train_file, 'w') as fout:
             for tag_name in train_tags[1:]:
-                tag_val = train_data[tag_name]
+                tag_val = train_data[train_tags]
                 fout.write('TAG:'+train_tags+':\n')
                 if tag_val:
                     for (item_1, item_1val) in tag_val.items():
