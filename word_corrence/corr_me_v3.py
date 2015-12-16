@@ -24,7 +24,7 @@ import sys
 import queue
 
 CURR_DIR = os.getcwd()
-DATA_DIR = os.getcwd() + "/../data_dir/tc-corpus-answer/" 
+DATA_DIR = os.getcwd() + "/../data_dir/ClassFile/" 
 STOP_FILE  = CURR_DIR + "/../data_dir/stopwords.txt"
 WHITE_FILE  = CURR_DIR + "/../data_dir/whitewords.txt"
 TMP_PATH = CURR_DIR + "/tmp/"
@@ -65,9 +65,19 @@ class TrainThread(threading.Thread):
                 print("Task Queue is empty, return!")
                 return
             print("Thread-%d正在处理:%s，还剩:%d"%(self.threadID, tag_name, q.qsize()))
+            if os.path.exists(TMP_PATH+tag_name+'.dat'):
+                print("DAT %s already exits, skip it!"%(tag_name))
+                continue
             line_num = 0
+            fast_prep = 1
             sub_train_data = {}
-            with open(DATA_DIR+'/'+tag_name+'.txt','r') as fin:
+            if os.path.exists(DATA_DIR+'/'+tag_name+'_p.txt'):
+                open_file = DATA_DIR+'/'+tag_name+'_p.txt'
+                fast_prep = 1
+            else:
+                open_file = DATA_DIR+'/'+tag_name+'.txt'
+                fast_prep = 0
+            with open(open_file,'r') as fin:
                 while True:
                     try:
                         line = fin.readline()
@@ -79,16 +89,25 @@ class TrainThread(threading.Thread):
                         break
                     line_num += 1
                     if not line_num % 1000 : print('Thread-%d,LINE:%d'%(self.threadID, line_num))
-                    line = line.strip()
-                    line_t = jieba.cut(line, cut_all=False)
                     objs = []
-                    for item in line_t:
-                        if item not in stop_words and hanzi_util.is_zhs(item):
+                    if not fast_prep:
+                        line = line.strip()
+                        line_t = jieba.cut(line, cut_all=False)
+                        for item in line_t:
+                            if item not in stop_words and hanzi_util.is_zhs(item):
+                                if len(item) == 1 and item not in white_words:
+                                    continue
+                                item_id = term_to_id(item)
+                                if item_id not in objs: 
+                                    objs.append(item_id)
+                    else:
+                        for item in line.split():
                             if len(item) == 1 and item not in white_words:
                                 continue
                             item_id = term_to_id(item)
                             if item_id not in objs: 
                                 objs.append(item_id)
+                            #objs = [ term_to_id(t_id) for t_id in line.split()]
                     if len(objs) < 2: continue
                     for index_i in range(len(objs) - 1):
                         for index_j in range(index_i + 1, len(objs)):
@@ -144,6 +163,8 @@ def build_train_data():
     #统计总的标签数目
     for parent,dirname,filenames in os.walk(DATA_DIR):
         for filename in filenames:
+            if filename[-4:] != '.txt': continue
+            if filename[-6:] == '_p.txt': continue
             tag_name = filename[:-4]
             train_tags.append(tag_name)
             q.put(tag_name)

@@ -19,3 +19,10 @@ https://radimrehurek.com/gensim/models/ldamodel.html
 https://shuyo.wordpress.com/
 - TODO:
 	感觉效果不是很好啊
+
+## 情感分析
+- 原理: 基于统计的方式
+- 依赖：ntlk sklearn
+- 语料：某东的商品评论，好评-差评
+- 参考：
+http://rzcoding.blog.163.com/
