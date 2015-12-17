@@ -24,7 +24,7 @@ import sys
 import queue
 
 CURR_DIR = os.getcwd()
-DATA_DIR = os.getcwd() + "/../data_dir/ClassFile/" 
+DATA_DIR = os.getcwd() + "/../data_dir/tc-corpus-answer/" 
 STOP_FILE  = CURR_DIR + "/../data_dir/stopwords.txt"
 WHITE_FILE  = CURR_DIR + "/../data_dir/whitewords.txt"
 TMP_PATH = CURR_DIR + "/tmp/"
@@ -60,14 +60,15 @@ class TrainThread(threading.Thread):
     def run(self):
         while True:
             try:
-                tag_name = q.get_nowait()
+                tag_name = q.get(timeout =  5)
             except queue.Empty as e:
                 print("Task Queue is empty, return!")
                 return
             print("Thread-%d正在处理:%s，还剩:%d"%(self.threadID, tag_name, q.qsize()))
-            if os.path.exists(TMP_PATH+tag_name+'.dat'):
-                print("DAT %s already exits, skip it!"%(tag_name))
-                continue
+            #if os.path.exists(TMP_PATH+tag_name+'.dat'):
+            #    print("DAT %s already exits, skip it!"%(tag_name))
+            #    q.task_done()
+            #    continue
             line_num = 0
             fast_prep = 1
             sub_train_data = {}
@@ -126,6 +127,22 @@ class TrainThread(threading.Thread):
                             else:
                                 sub_train_data[item_i] = {}
                                 sub_train_data[item_i][item_j] = 1
+
+            # 数据量太大，将出现频次小于等于1的词剔除掉
+            print("精简数据...")
+            iter_obj = copy.deepcopy(sub_train_data)
+            for item_1 in iter_obj.keys():
+                if not iter_obj[item_1]: continue
+                for item_2 in iter_obj[item_1].keys():
+                    if iter_obj[item_1][item_2] <= 1:
+                        #print("DEBUG1:%d - %s/%s" %(iter_obj[item_1][item_2] ,train_word_id[item_1], train_word_id[item_2]))
+                        del sub_train_data[item_1][item_2]
+                if not iter_obj[item_1]:
+                    print("DEBUG2:%s" %(train_word_id[item_1]))
+                    del sub_train_data[item_1]
+            del iter_obj
+
+            print("保存数据...")
             # sub_train_data
             dump_file = TMP_PATH+tag_name+'.dat'
             with open(dump_file,'wb', -1) as fp:
@@ -169,11 +186,13 @@ def build_train_data():
             train_tags.append(tag_name)
             q.put(tag_name)
 
+    print(train_tags)
     if not os.path.exists(TMP_PATH): os.mkdir(TMP_PATH)
     #分发给各个消费线程去处理
     threads = []
     for i in range(10,12):
         t = TrainThread(i)
+        #t.setDaemon(True)
         t.start()
         threads.append(t)
 
@@ -181,11 +200,12 @@ def build_train_data():
     q.join()
     # 将dump的数据集合起来
     train_data = {}
+    print('COLLECTING DATA...')
     for tag_name in train_tags[1:]:
+        print('正在处理:'+tag_name)
         dump_file = TMP_PATH+tag_name+'.dat'
         with open(dump_file,'rb', -1) as fp:
             train_data[tag_name] = pickle.load(fp)
-    
     print('DONE!')
     return
 
@@ -194,7 +214,7 @@ def calc_vector(str):
     sub_train = []
     pair_debug = {}
     if not str or not len(str):
-        return None
+        return (None,None)
     line = str.strip()
     line_t = jieba.cut(line, cut_all=False)
     objs = []
@@ -205,7 +225,7 @@ def calc_vector(str):
             item_id = term_to_id(item)
             if item_id not in objs:
                 objs.append(item_id)
-    if len(objs) < 2: return None
+    if len(objs) < 2: return (None,None)
     
     #产生搭配组合
     for index_i in range(len(objs) - 1):
@@ -259,6 +279,7 @@ def calc_vector(str):
 def test_sub(str, put):
     test_str = str
     sorted_list = None
+    data_d = None
     if not str or not len(str):  return
     print("测试文本：")
     print(test_str)
@@ -286,6 +307,7 @@ if __name__ == '__main__':
         build_train_data()
         print(debug_s_words)
         del debug_s_words
+        print("DUMPING DATA...")
         with open(dump_file,'wb', -1) as fp:
             dump_data = []
             dump_data.append(train_word_id)
@@ -313,7 +335,7 @@ if __name__ == '__main__':
         with open(train_file, 'w') as fout:
             for tag_name in train_tags[1:]:
                 tag_val = train_data[tag_name]
-                fout.write('TAG:'+train_tags+':\n')
+                fout.write('TAG:'+tag_name+':\n')
                 if tag_val:
                     for (item_1, item_1val) in tag_val.items():
                         fout.write('\t'+train_word_id[item_1]+':\n')
@@ -329,7 +351,7 @@ if __name__ == '__main__':
     #每次启动需要加载的数据比较多，这里设置成服务端，接受客户端的请求
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     host = ''   #local nic
-    port = 34770
+    port = 34772
 
     sock.bind((host, port))
     sock.listen(10)
@@ -339,6 +361,7 @@ if __name__ == '__main__':
         conn, addr = sock.accept()
         data = conn.recv(4096).decode().strip()
         if data:
+            print('测试字串:'+data)
             (ret, ret_d) = test_sub(data, 0)
             if ret:
                 for key in ret:

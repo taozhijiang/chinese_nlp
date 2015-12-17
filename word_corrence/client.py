@@ -4,7 +4,7 @@ import socket
 import sys
 
 host = '127.0.0.1'
-port = 34774
+port = 34772
 
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
