@@ -5,6 +5,8 @@
 #include "jieba/MixSegment.hpp"
 #include "jieba/KeywordExtractor.hpp"
 
+#include "jieba/FullSegment.hpp"
+
 using namespace CppJieba;
 
 //extern "C" {
