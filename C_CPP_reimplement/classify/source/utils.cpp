@@ -170,13 +170,16 @@ bool prep_train_data(CLASS_DATA_STRUCT &cds, string dirname)
     int word_id = 0;
     int tag_id = 0;
     double score = 0;
+
+    cout << "TRIM LOW FREQ WORD!" << endl;
     for(it_ii = word_fd.begin(); it_ii != word_fd.end(); ++ it_ii)
     {
         word_id = it_ii->first;
         score = 0;
         if(word_fd[word_id] <= 5)
         {
-            cout << "SKIP:" << cds.train_id_w[word_id] << ", FREQ:" << word_fd[word_id] << endl;
+            //cout << "SKIP:" << cds.train_id_w[word_id] << ", FREQ:" << word_fd[word_id] << endl;
+            cout << ".";
             continue;
         }
         for(tag_id = 1; tag_id < cds.train_tags.size(); ++ tag_id)
@@ -188,6 +191,7 @@ bool prep_train_data(CLASS_DATA_STRUCT &cds, string dirname)
         w_scores.push_back(std::pair<double, int>(score, word_id));
        //cout << cds.train_id_w[word_id] << ":" << scores[word_id] << endl;
     }
+    cout << endl;
 
     sort(w_scores.begin(), w_scores.end());
 
@@ -213,7 +217,7 @@ static bool process_train_file(CLASS_DATA_STRUCT &cds, int tag_id,
     ifstream fin(filepath);
     fin.ignore();
     string line;
-    unsigned long line_num;
+    unsigned long line_num = 0;
     vector<std::string> cut_store;
     vector<std::string> cut_lite;
     vector<int> cut_lite_id;
@@ -224,8 +228,8 @@ static bool process_train_file(CLASS_DATA_STRUCT &cds, int tag_id,
             continue;
 
         ++ line_num;
-        if(! line_num % 1000)
-            cout << "CURRENT TAG: " << tagname << ", LINE:" << line_num << endl;
+        if(! (line_num % 10000))
+            cout << "LINE:" << line_num << endl;
 
         if(! jieba_cut(cds.jieba, line, cut_store))
             continue;
@@ -257,10 +261,15 @@ static bool process_train_file(CLASS_DATA_STRUCT &cds, int tag_id,
             cut_lite_id.push_back(word_id);
         }
 
-        //保留作为训练数据
+        //保留作为训练数据和测试数据
         if(!cut_lite_id.empty())
-            cds.train_info[tag_id].push_back(cut_lite_id);
-
+        {
+            if((line_num % 30) == 0)    // 4%
+                cds.test_info[tag_id].push_back(cut_lite_id);
+            else
+                cds.train_info[tag_id].push_back(cut_lite_id);
+        }
+            
         // 词频统计
         // 由于是卡方统计，不计数，只表示是否出现，所以前面的内容还需要去重复处理
 
@@ -280,7 +289,7 @@ static bool process_train_file(CLASS_DATA_STRUCT &cds, int tag_id,
     }
 
     cout << "TOTAL WORD SIZE: " << cds.train_w.size() << endl;
-    cout << "TAG TRAIN SIZE: " << cds.train_info[tag_id].size() << endl;
+    cout << "DOC SIZE: " << cds.train_info[tag_id].size() << "/" << cds.test_info[tag_id].size() << endl;
 
     return true;
 }
@@ -291,6 +300,11 @@ static bool process_train_file(CLASS_DATA_STRUCT &cds, int tag_id,
     00000800 -- 0000FFFF:   1110xxxx 10xxxxxx 10xxxxxx
     00010000 -- 001FFFFF:   11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 */
+/**
+ * 这里做一个简化，由于实现已经经过分词处理，所以这里认为：
+ * 如果开头是ASCII字符，那么这个词就是英文单词
+ * 如果UTF-8长度为1,那么可能是全角标点，或者单个中文词，同样返回false
+ */
 #define IS_IN_RANGE(c, f, l)    (((c) >= (f)) && ((c) <= (l)))
 #define UTF8_CHAR_LEN( byte )   ((( 0xE5000000 >> (( byte >> 3 ) & 0x1e )) & 3 ) + 1)
 static inline bool is_zhs_UTF8(const char* str)
@@ -309,7 +323,58 @@ static inline bool is_zhs_UTF8(const char* str)
         return true;
 }
 
-bool load_train_data(string filename, CLASS_DATA_STRUCT &cds)
+bool save_train_data(CLASS_DATA_STRUCT &cds, string filename)
+{
+    ofstream fout(filename);
+    int size_len = 0;
+    
+    cout << "#@训练标签:" << endl;
+    fout << "#@训练标签:" << endl;
+    size_len = cds.train_tags.size();
+    for(int i =0 ; i<size_len; ++i)
+        fout << i << "-" << cds.train_tags[i] << endl;
+    fout.flush();
+
+    cout << "#@训练词表:" << endl;
+    fout << "#@训练词表:" << endl;
+    size_len = cds.train_w.size();
+    for(int i =0 ; i<size_len; ++i)
+        fout << i << "-" << cds.train_w[i] << endl;
+    fout.flush();
+
+    cout << "#@卡方指数:" << endl;
+    fout << "#@卡方指数:" << endl;
+    size_len = cds.sorted_wscores.size();
+    for(int i =0 ; i<size_len; ++i)
+        fout << cds.sorted_wscores[i] << "-" << "0" << endl;
+    fout.flush();
+
+    cout << "#@训练集:" << endl;
+    fout << "#@训练集:" << endl;
+    for(int i =1; i<cds.train_tags.size(); ++i)
+    {
+        fout << "#$" << cds.train_tags[i] << ":" << endl;
+        size_len = cds.train_info[i].size();
+        for(int j=0; j<size_len; ++j)
+        {
+            fout << "[";
+            for(int k=0; k<cds.train_info[i][j].size(); ++k)
+            {
+                fout << cds.train_info[i][j][k] <<"," ;
+            }
+            fout << "]" << endl;
+        }
+        fout.flush();
+    }
+
+    fout.flush();
+
+    cout << "SAVE FINISHED!" << endl;
+
+    fout.close();
+}
+
+bool load_train_data(CLASS_DATA_STRUCT &cds, string filename)
 {
     //initialize
     cds.train_tags.clear();
@@ -400,8 +465,8 @@ bool load_train_data(string filename, CLASS_DATA_STRUCT &cds)
             for (int i = 0; i< st.size(); i++)
                 st_n.push_back(atoi(st[i].c_str()));
 
-            // STORE IT!
-            if (curr_index < 500 )
+            // STORE IT!  ~4% test part
+            if ( (curr_index % 30) == 0 )
                 cds.test_info[curr_tag_id].push_back(st_n);
             else
                 cds.train_info[curr_tag_id].push_back(st_n);
@@ -428,14 +493,23 @@ bool load_train_data(string filename, CLASS_DATA_STRUCT &cds)
         }
         else if ( curr_cat == "训练标签:")
         {
-            vector<string> tokens = split(line,'-');
-            if ( atoi(tokens[0].c_str()) != curr_index)
+            //vector<string> tokens = split(line,'-');
+            int n_pos = line.find_first_of("-");
+
+            if(n_pos != -1)
             {
-                cerr << "Error for mismatch: " << tokens[0].c_str() << "~" << curr_index << endl;
-                exit(-1);
+                string str1 = line.substr(0, n_pos);
+                string str2 = line.substr(n_pos + 1);
+                
+                if ( atoi(str1.c_str()) != curr_index)
+                {
+                    cerr << "Error for mismatch: " << str1.c_str() << "~" << curr_index << endl;
+                    exit(-1);
+                }
+                cds.train_tags.push_back(str2);
+                ++ curr_index;
+
             }
-            cds.train_tags.push_back(tokens[1]);
-            ++ curr_index;
         }
         else if (curr_cat.length())
         {
@@ -444,11 +518,14 @@ bool load_train_data(string filename, CLASS_DATA_STRUCT &cds)
         }
     }
     
+    /* //剔除了部分词的卡方，所以这里肯定不相等了
     if (cds.train_w_id.size() != cds.sorted_wscores.size())
     {
-        cerr << " WORD size mismatch!" << endl;
+        cerr << " WORD size mismatch!" << "train_w_id:"<< cds.train_w_id.size() 
+            << "sorted_wscores:" << cds.sorted_wscores.size() << endl;
         exit(-1);
     }
+    */
 
     cout << "Initilaize OK!" << endl;
     cout << "TOTAL LENGTH INFO:" << endl;
@@ -469,5 +546,5 @@ bool load_train_data(string filename, CLASS_DATA_STRUCT &cds)
 
 void utils_test(void)
 {
-    load_train_data("./dump_cpp.dat_v4", cds);
+    load_train_data(cds, "./dump_cpp.dat_v4");
 }

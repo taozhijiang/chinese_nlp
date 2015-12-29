@@ -4,7 +4,7 @@
 #include "jieba.hpp"
 #include <vector>
 #include <map>
-#include<string>
+#include <string>
 
 #include <iomanip>
 #include <execinfo.h>
@@ -23,6 +23,8 @@ void jieba_close(P_Jieba jieba);
 //
 vector<string> split(const string &s, char delim);
 vector<string> &split(const string &s, char delim, vector<std::string> &elems);
+
+static const string dump_file = "dump_cpp.dat_23054e9116";
 
 typedef struct _CLASS_DATA_STRUCT
 {
@@ -58,7 +60,8 @@ enum CLASSIFIER {
 bool prep_train_data(CLASS_DATA_STRUCT &cds, string dirname);
 static bool process_train_file(CLASS_DATA_STRUCT &cds, int tag_id, 
     map<int, int> &word_fd, map<int, int> &tmp_word_fd);
-bool load_train_data(string filename, CLASS_DATA_STRUCT &cds);
+bool load_train_data(CLASS_DATA_STRUCT &cds, string filename);
+bool save_train_data(CLASS_DATA_STRUCT &cds, string filename);
 bool train_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double alpha, bool eval_mode);
 static bool eval_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, map<int, double> &store);
 void eval_classifyers_and_args(CLASS_DATA_STRUCT &cds);

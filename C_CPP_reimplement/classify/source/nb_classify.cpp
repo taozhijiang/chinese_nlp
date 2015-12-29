@@ -37,7 +37,11 @@ vector<string> split(const string &s, char delim)
     return elems;
 }
 
+
 // 同时训练出伯努利分布和多项式分布的朴素贝叶斯分类器
+// 如果 eval_mode == true  测试模式
+// 如果 eval_mode == false 运行模式，此时test_info也会并入训练数据集合，同时释放不用空间
+//                                      应为数据会被清除，所以这种模式只能运行一次
 bool train_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double alpha, bool eval_mode)
 {
     // For segment fault debug
@@ -66,6 +70,17 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double alpha, bool eva
     //遍历 train_info
     map<int, vector< vector<int> > > :: iterator it;
 
+    //将测试数据集添加到训练数据集后面
+    if( ! eval_mode)
+    {
+        cout << "MERGE TEST TO TRAIN!!!" << endl;
+        for(int i = 1; i<cds.train_tags.size(); ++i)
+        {
+            for(int j = 0; j < cds.test_info.size(); ++j)
+                cds.train_info[i].push_back(cds.test_info[i][j]);
+        }
+    }
+
     for (it = cds.train_info.begin(); it != cds.train_info.end(); it++)   //每一个标签
     {
         int tag_id = it->first;
@@ -85,7 +100,7 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double alpha, bool eva
 
         for ( int i = 0; i< t_items.size(); i++ )
         {
-            if ((i % 5000) == 0 and i > 0 and verbose)
+            if ((i % 10000) == 0 and i > 0 and verbose)
                 cout << "DOC NUM:" << i << endl;
             
             vector<int> t_item = t_items.at(i);     //文档中的词
@@ -135,11 +150,23 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double alpha, bool eva
 #endif        
     }
 
-    if (verbose)
-        cout << "TRAIN DONE, RELEASE TRAIN DATA!\n" << endl;
-
     if(!eval_mode)
-        cds.train_info.clear();
+    {
+
+        if(!cds.data_path.length())
+        {
+            cout << "LOADED TYPE, DO NOT STORE TO FILE!" << endl;
+        }
+        else
+        {
+            cout << "SAVE DATA TO FILE!" << endl;
+            save_train_data(cds, dump_file);   
+        }
+
+        cout << "TRAIN DONE, RELEASE TRAIN DATA!" << endl;
+        cds.train_info.clear();   
+        cds.test_info.clear();
+    }
 
     return true;
 }
@@ -149,7 +176,7 @@ void eval_classifyers_and_args(CLASS_DATA_STRUCT &cds)
     
     cout << "TESTING CLASSIFIER!\n"<< endl;
 
-    int best_ns[] = {2000, 4000, 6000, 8000, 10000, 14000, 16000, 20000, 25000, 300000};
+    int best_ns[] = {2000, 4000, 6000, 8000, 10000, 12000, 15000, 20000, 25000, 30000; 35000};
 
     map<int, double> ret;
 
