@@ -30,3 +30,11 @@ http://rzcoding.blog.163.com/
 ## 贝叶斯分类
 - 用C/C++重新实现后，发现内存占用率和运算速度比Python要块很多。
 - 通过Sogou的训练语料发现，10个分类下，10000特征词的分类准确率在75%左右，而在京东抓取的好评/差评语料训练后，测试分类精度达到91%左右。
+
+## 最大熵分类器
+- 原理：自行Google
+- 参考：
+http://www.fuqingchuan.com/2015/03/776.html
+http://www.nltk.org/_modules/nltk/classify/maxent.html
+- NOTE：
+基本是按照nltk的GIS算法翻译过来的，没有实现IIS，所以训练的速度非常的慢。
