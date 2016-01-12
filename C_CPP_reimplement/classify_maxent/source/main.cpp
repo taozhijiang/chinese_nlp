@@ -6,6 +6,7 @@ using namespace std;
 
 #include "header.hpp"
 #include <unistd.h>
+#include <string.h>
 
 
 P_Jieba jieba = NULL;
@@ -44,7 +45,7 @@ int main(int argc, char** argv)
 
     string data_dir = "../../data_dir/ClassFile_4000_4/";
 
-    while( (opt_g = getopt(argc, argv, "d:t:b:vhei:f")) != -1 )
+    while( (opt_g = getopt(argc, argv, "d:t:b:vhei:fx:")) != -1 )
     {
         switch(opt_g)
         {
@@ -80,6 +81,7 @@ int main(int argc, char** argv)
     jieba = jieba_initialize();
     cds.jieba = jieba;
     cds.data_path = "";
+    cds.train_type = max_ent_megam;
 
     if (fast_mode)
     {   
@@ -94,18 +96,32 @@ int main(int argc, char** argv)
             exit(-1);
         }
     }
-    else
+    else if(!eval_mode)
     {
         cout << "TRAIN FROM RAW DATA!" << endl;
         prep_train_data(cds, data_dir);
 
         // train it last
-        train_classifyer(cds, best_n, iter_count, false);
+        if(cds.train_type == max_ent_gis)
+	{
+            train_classifyer_gis(cds, best_n, iter_count, eval_mode);
+	}
+        else if(cds.train_type == max_ent_megam)
+	{
+            train_classifyer_megam(cds, best_n, eval_mode);
+	}
+        else
+        {
+            cerr << "UNKNOW TRAIN TYPE..." << cds.train_type << endl;
+            exit(-1);
+        }
     }
-
-    if(!fast_mode && eval_mode)
+    else
     {
         cout << "Enter eval mode..." << endl;
+        prep_train_data(cds, data_dir);
+
+        // do eval
         eval_classifyers_and_args(cds);
     }   
 

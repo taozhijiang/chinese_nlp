@@ -8,19 +8,20 @@
 #include <cstdlib>
 #include <vector>
 #include <map>
+#define _USE_MATH_DEFINES	/* for const*/
 #include <cmath>
 #include <set>
+#include <time.h>
 
 #include <float.h>
 
 #include "header.hpp"
 
-#include <time.h>
 
 using namespace std;
 
 
-bool generate_encode(CLASS_DATA_STRUCT &cds, int tag_id, 
+static bool generate_encode_gis(CLASS_DATA_STRUCT &cds, int tag_id, 
         const vector<int>& from, map<int, double>& to)
 {
     int tmp_key = 0;
@@ -49,15 +50,43 @@ bool generate_encode(CLASS_DATA_STRUCT &cds, int tag_id,
 }
 
 
+static bool generate_encode_megam(CLASS_DATA_STRUCT &cds, int tag_id, 
+        const vector<int>& from, map<int, int>& to)
+{
+    int tmp_key = 0;
+    int corr_count = 0;
+    int FT_SIZE = cds.n_ft_index.size();
+
+    to.clear();
+
+    for (int i = 0; i < from.size(); ++i)  //每个词
+    {
+        if ( cds.useful_words.find(from[i]) != cds.useful_words.end())
+        {
+            tmp_key = from[i] << TAG_SHIFT | tag_id;
+            if(cds.n_ft_index.find(tmp_key) != cds.n_ft_index.end())
+            {
+                ++ corr_count;
+                to[cds.n_ft_index[tmp_key]] = 1;
+            }
+        }
+    }
+
+    to[FT_SIZE + tag_id - 1] = 1;   // __always_on__
+
+    return true;
+}
+
+
 bool prob_classify(CLASS_DATA_STRUCT &cds, map<int, double>& prob_dict,
     map<int, double>& pdist)
 {
     map<int, double> ::iterator it_id;
     pdist.clear();
 
-    if(prob_dict.empty() || prob_dict.size() < 2)
+    if(prob_dict.empty() || prob_dict.size() != (cds.train_tags.size() -1 ))
     {
-        cerr << " EMPTY prob_dict!" << endl;
+        cerr << " error prob_dict size!" << endl;
         exit(-1);
     }
 
@@ -85,12 +114,181 @@ bool prob_classify(CLASS_DATA_STRUCT &cds, map<int, double>& prob_dict,
     return true;
 }
 
+bool train_classifyer_megam(CLASS_DATA_STRUCT &cds, int best_n, bool eval_mode)
+{
+    // For segment fault debug
+    struct sigaction sa;
+    sa.sa_handler = backtrace_info;
+    sigaction(SIGSEGV, &sa, NULL); 
+
+    cout << "BEGIN TO TRAIN MEGAM ..." << endl;
+    // 选取指定的测试信息
+    cds.useful_words.clear();
+    if (best_n > cds.sorted_wscores.size())
+        best_n = cds.sorted_wscores.size();
+    // 重新复制有效词的索引
+    for(int i = 0; i < best_n; i++)
+        cds.useful_words[cds.sorted_wscores[i]] = i;
+
+    cds.BEST_N = best_n;
+    cds.n_ft_index.clear();
+
+    char* TMP_INPUT_FILE = "nltk-megam.tmp";
+
+    //将测试数据集添加到训练数据集后面
+    if( ! eval_mode)
+    {
+        cout << "MERGE TEST TO TRAIN!!!" << endl;
+        for(int i = 1; i<cds.train_tags.size(); ++i)
+        {
+            for(int j = 0; j < cds.test_info.size(); ++j)
+                cds.train_info[i].push_back(cds.test_info[i][j]);
+        }
+    }
+
+    /**
+     * calc empirical_count
+     */
+
+     // STAGE 1 fname_fval_lable id map
+    map<int, vector< vector<int> > > :: iterator it;
+    cds.n_ft_index.clear();
+    for (it = cds.train_info.begin(); it != cds.train_info.end(); ++ it)
+    {
+        int tag_id = it->first;
+
+        vector< vector<int> > t_items = it->second;  //训练文档
+        for ( int i = 0; i< t_items.size(); ++i )
+        {            
+            vector<int> t_item = t_items.at(i);     //文档中的词
+            unique_vector(t_item);
+            int tmp_key = 0;
+            int tmp_val = 0;
+            for (int j = 0; j < t_item.size(); j++)  //每个词
+            {
+                // 看该单词是不是在选定的特征词当中
+                if ( cds.useful_words.find(t_item[j]) != cds.useful_words.end())
+                {
+                    tmp_key = t_item[j] << TAG_SHIFT | tag_id;
+                    //如果尚未添加到feature的数组中，添加key->index的mapping
+                    if(cds.n_ft_index.find(tmp_key) == cds.n_ft_index.end())
+                    {
+                        tmp_val = cds.n_ft_index.size();
+                        cds.n_ft_index[tmp_key] = tmp_val;
+                        // Critical !!!!
+                        //cds.n_ft_index[tmp_key] = cds.n_ft_index.size();   
+                    }
+                }
+            }
+        }
+    }
+
+
+    map<int, int> ::iterator it_ii;
+    map<int, double> ::iterator it_id;
+    // Write a training file for megam.
+    ofstream fout(TMP_INPUT_FILE);
+
+    // 计算estimated_fcount
+    for (it = cds.train_info.begin(); it != cds.train_info.end(); ++it)
+    {
+        int tag_id = it->first;
+        map<int, int> en_features;
+
+        vector< vector<int> > t_items = it->second;  //训练文档
+        for ( int i = 0; i< t_items.size(); i++ )
+        {
+            vector<int> t_item = t_items.at(i);     //文档中的词
+            unique_vector(t_item);
+
+            //???
+            if(t_item.empty())
+                continue;
+
+            fout << tag_id;
+
+            for( int pre_tid = 1; pre_tid < cds.train_tags.size(); ++ pre_tid)
+            {
+                generate_encode_megam(cds, pre_tid, t_item, en_features);
+                fout << " #";
+                for(it_ii = en_features.begin(); it_ii != en_features.end(); ++it_ii)
+                    fout <<" " << it_ii->first;
+            }
+            fout << endl;
+        }
+    }
+    fout.close();
+
+    //system(" wc nltk-megam.tmp ");
+
+    int pipefd[2];
+    pipe(pipefd);
+
+    map<int, double> weights;
+    if (fork() == 0)
+    {
+        close(pipefd[0]);    // close reading end in the child
+        dup2(pipefd[1], STDOUT_FILENO);  // send stdout to the pipe
+        dup2(pipefd[1], STDERR_FILENO);  // send stderr to the pipe
+        close(pipefd[1]);    // this descriptor is no longer needed
+
+        char *const exec_args[] = 
+        {
+            "./megam_i686.opt",
+            "-quiet",
+            "-nobias",
+            "-repeat", "10",
+            "-explicit", 
+            "-lambda", "0.00", 
+            "-tune", 
+            "multiclass", 
+            TMP_INPUT_FILE, 
+            (char  *) NULL,
+        };
+
+        execvp("./megam_i686.opt", exec_args);
+        remove(TMP_INPUT_FILE);
+        exit(0);
+    }
+    else
+    {
+        // parent
+        char buffer[1024];
+        close(pipefd[1]);  // close the write end of the pipe in the parent
+        FILE* fp = fdopen(pipefd[0],"r");
+
+        while (fgets(buffer, sizeof(buffer)-1, fp) != 0)
+        {
+            vector<string> tokens = split(buffer,' ');
+            if(tokens.size() != 2)
+            {
+                cout << ">>>:" << buffer;
+                continue;
+            }
+            weights[atoi(tokens[0].c_str())] = atof(tokens[1].c_str());
+        }
+    }
+
+    if(weights.size() != (cds.n_ft_index.size() + cds.train_tags.size() -1 )) // __always_on__
+    {
+        cout << "MISMATCH size:" << weights.size() << "-" << cds.n_ft_index.size() << endl;
+        return false;
+    }
+
+    cds.n_weight.clear();
+    for(int i=0; i<weights.size(); ++i)
+        cds.n_weight.push_back( weights[i]*log2(M_E) ); //ln->log2
+
+    cout << "MEGAM FINISHED with size:" << cds.n_weight.size() << endl;
+
+    return true;
+}
 
 // 同时训练出伯努利分布和多项式分布的朴素贝叶斯分类器
 // 如果 eval_mode == true  测试模式
 // 如果 eval_mode == false 运行模式，此时test_info也会并入训练数据集合，同时释放不用空间
 //                                      应为数据会被清除，所以这种模式只能运行一次
-bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool eval_mode)
+bool train_classifyer_gis(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool eval_mode)
 {
 
     // For segment fault debug
@@ -98,6 +296,7 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool e
     sa.sa_handler = backtrace_info;
     sigaction(SIGSEGV, &sa, NULL); 
 
+    cout << "BEGIN TO TRAIN GIS ..." << endl;
     // 选取指定的测试信息
     cds.useful_words.clear();
     if (best_n > cds.sorted_wscores.size())
@@ -111,6 +310,17 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool e
     cds.n_weight.clear();
 
     unsigned int FT_SIZE = 0;
+
+        //将测试数据集添加到训练数据集后面
+    if( ! eval_mode)
+    {
+        cout << "MERGE TEST TO TRAIN!!!" << endl;
+        for(int i = 1; i<cds.train_tags.size(); ++i)
+        {
+            for(int j = 0; j < cds.test_info.size(); ++j)
+                cds.train_info[i].push_back(cds.test_info[i][j]);
+        }
+    }
 
     /**
      * calc empirical_count
@@ -130,6 +340,7 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool e
             vector<int> t_item = t_items.at(i);     //文档中的词
             unique_vector(t_item);
             int tmp_key = 0;
+            int tmp_val = 0;
             for (int j = 0; j < t_item.size(); j++)  //每个词
             {
                 // 看该单词是不是在选定的特征词当中
@@ -138,7 +349,12 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool e
                     tmp_key = t_item[j] << TAG_SHIFT | tag_id;
                     //如果尚未添加到feature的数组中，添加key->index的mapping
                     if(cds.n_ft_index.find(tmp_key) == cds.n_ft_index.end())
-                        cds.n_ft_index[tmp_key] = cds.n_ft_index.size();
+                    {
+                        tmp_val = cds.n_ft_index.size();
+                        cds.n_ft_index[tmp_key] = tmp_val;
+                        // Critical !!!!
+                        //cds.n_ft_index[tmp_key] = cds.n_ft_index.size(); 
+                    }
                 }
             }
         }
@@ -149,7 +365,7 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool e
     double weight        [FT_SIZE + 1]  = {0.0f,};
     double last_weight  [FT_SIZE + 1]  = {0.0f,};
 
-    cout << "特征维度：" << FT_SIZE << endl;
+    cout << "特征维度：" << best_n << "/"<< FT_SIZE << endl;
 
     map<int, int> ::iterator it_ii;
     map<int, double> ::iterator it_id;
@@ -169,7 +385,7 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool e
             unique_vector(t_item);
             map<int, double> en_features;
 
-            generate_encode(cds, tag_id, t_item, en_features);
+            generate_encode_gis(cds, tag_id, t_item, en_features);
             for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
             {
                 empirical_fcount[it_id->first] += it_id->second;
@@ -220,8 +436,7 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool e
 
                 for( int pre_tid = 1; pre_tid < cds.train_tags.size(); ++ pre_tid)
                 {
-                    // 总会产生的
-                    generate_encode(cds, pre_tid, t_item, en_features);
+                    generate_encode_gis(cds, pre_tid, t_item, en_features);
                     
                     total = 0.0f;
                     for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
@@ -240,7 +455,7 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool e
                 {
                     prob = pdist[pre_tid];
 
-                    generate_encode(cds, pre_tid, t_item, en_features);
+                    generate_encode_gis(cds, pre_tid, t_item, en_features);
                     for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
                     {
                         estimated_fcount[it_id->first] += prob* it_id->second;
@@ -293,7 +508,7 @@ bool train_classifyer(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bool e
 void eval_classifyers_and_args(CLASS_DATA_STRUCT &cds)
 {
     
-    cout << "TESTING CLASSIFIER!\n"<< endl;
+    cout << "BEGIN TO TEST CLASSIFIER!\n"<< endl;
 
     int best_ns[] = {2000, 4000, 6000, 8000, 10000, 12000, 15000, 20000, 25000, 30000, 35000};
 
@@ -309,10 +524,22 @@ void eval_classifyers_and_args(CLASS_DATA_STRUCT &cds)
 }
 
 // 测试分类结果
-static bool eval_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double& store)
+static bool eval_classifyer(CLASS_DATA_STRUCT &cds, int best_n, double& store)
 {
      // train first
-    train_classifyer(cds, BEST_N, 50, true);
+    if (cds.train_type == max_ent_gis)
+    {
+        train_classifyer_gis(cds, best_n, 40, true);   
+    }
+    else if(cds.train_type == max_ent_megam)
+    {
+        train_classifyer_megam(cds, best_n, true);   
+    }
+    else
+    {
+        cerr << "UNKNOW TRAIN TYPE:" << cds.train_type << endl;
+        exit(-1);
+    }
 
     //遍历 test_info
     map<int, vector< vector<int> > > :: iterator it;
@@ -320,11 +547,7 @@ static bool eval_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double& store)
     int total_test = 0;
     int corr_test = 0;
 
-    int tmp_index = 0;
-    double max_prob = 0.0;
-    int     max_tag_id = -1;
-
-    for (it = cds.test_info.begin(); it != cds.test_info.end(); it++)   //每一个标签
+    for (it = cds.test_info.begin(); it != cds.test_info.end(); ++it)   //每一个标签
     {
         int tag_id = it->first; 
         vector< vector<int> > t_items = it->second; //labled docs
@@ -342,18 +565,19 @@ static bool eval_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double& store)
             double total = 0.0f;
             map<int, double> prob_dict;
             map<int, double> pdist;
-            map<int, double> en_features;
-            map<int, double> ::iterator it_id;
+            map<int, int> en_features;
+            map<int, int> ::iterator it_ii;
+            double max_prob = 0.0;
+            int     max_tag_id = -1;
 
             for( int pre_tid = 1; pre_tid < cds.train_tags.size(); ++ pre_tid)
             {
-                // 总会产生的
-                generate_encode(cds, pre_tid, t_item, en_features);
+                generate_encode_megam(cds, pre_tid, t_item, en_features);
                 
                 total = 0.0f;
-                for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
+                for(it_ii = en_features.begin(); it_ii != en_features.end(); ++it_ii)
                 {
-                    total += cds.n_weight[it_id->first] * it_id->second;
+                    total += cds.n_weight[it_ii->first] * it_ii->second;
                 }
                 prob_dict[pre_tid] = total;
             }
@@ -362,6 +586,7 @@ static bool eval_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double& store)
             
             // TTT-2 calc fcount
             // 更新 estimate_fcount
+            map<int, double> ::iterator it_id;
             for(it_id = pdist.begin(); it_id != pdist.end(); ++it_id)
             {
                 //cout << " " << cds.train_tags[it_id->first] << ":" << it_id->second << endl;
@@ -408,25 +633,25 @@ bool predict_it(CLASS_DATA_STRUCT &cds, const vector<std::string> store,
     unique_vector(word_id);
     if(word_id.empty())
     {
-        //cout << "NULL PREDICTABLE..." << endl;
+        cout << "NULL PREDICTABLE..." << endl;
         return false;
     }
 
     double total = 0.0f;
     map<int, double> prob_dict;
     map<int, double> pdist;
-    map<int, double> en_features;
+    map<int, int> en_features;
+    map<int, int> ::iterator it_ii;
     map<int, double> ::iterator it_id;
 
     for( int pre_tid = 1; pre_tid < cds.train_tags.size(); ++ pre_tid)
     {
-        // 总会产生的
-        generate_encode(cds, pre_tid, word_id, en_features);
-        
+        generate_encode_megam(cds, pre_tid, word_id, en_features);
+
         total = 0.0f;
-        for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
+        for(it_ii = en_features.begin(); it_ii != en_features.end(); ++it_ii)
         {
-            total += cds.n_weight[it_id->first] * it_id->second;
+            total += cds.n_weight[it_ii->first] * it_ii->second;
         }
         prob_dict[pre_tid] = total;
     }

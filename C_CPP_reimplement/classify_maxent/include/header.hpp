@@ -25,6 +25,11 @@ vector<string> &split(const string &s, char delim, vector<std::string> &elems);
 bool unique_vector( vector<int> &vec);
 static const string dump_file = "dump_cpp.dat_6d932b7aad";
 
+enum MAX_ENT_TYPE { 
+    max_ent_gis = 1, 
+    max_ent_megam,
+};
+
 typedef struct _CLASS_DATA_STRUCT
 {
     string data_path;
@@ -42,6 +47,7 @@ typedef struct _CLASS_DATA_STRUCT
 
     //训练结果
     int BEST_N;
+    enum MAX_ENT_TYPE train_type;
     map<int, int> useful_words; //word_id, BEST_N_word_index
     map<int, int> n_ft_index;
     vector<double> n_weight;
@@ -50,12 +56,14 @@ typedef struct _CLASS_DATA_STRUCT
 
 static const int TAG_SHIFT = 16;
 
+
 bool prep_train_data(CLASS_DATA_STRUCT &cds, string dirname);
 static bool process_train_file(CLASS_DATA_STRUCT &cds, int tag_id, 
     map<int, int> &word_fd, map<int, int> &tmp_word_fd);
 bool load_train_data(CLASS_DATA_STRUCT &cds, string filename);
 bool save_train_data(CLASS_DATA_STRUCT &cds, string filename);
-bool train_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, int iter_count, bool eval_mode);
+bool train_classifyer_gis(CLASS_DATA_STRUCT &cds, int BEST_N, int iter_count, bool eval_mode);
+bool train_classifyer_megam(CLASS_DATA_STRUCT &cds, int BEST_N, bool eval_mode);
 static bool eval_classifyer(CLASS_DATA_STRUCT &cds, int BEST_N, double &store);
 void eval_classifyers_and_args(CLASS_DATA_STRUCT &cds);
 bool predict_it(CLASS_DATA_STRUCT &cds, const vector<std::string> str, 
