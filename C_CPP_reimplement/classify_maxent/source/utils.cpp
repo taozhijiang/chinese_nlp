@@ -376,33 +376,33 @@ bool save_train_data(CLASS_DATA_STRUCT &cds, string filename)
     fout << "#@训练标签:" << endl;
     size_len = cds.train_tags.size();
     for(int i =0 ; i<size_len; ++i)
-        fout << i << "-" << cds.train_tags[i] << endl;
+        fout << i << "$" << cds.train_tags[i] << endl;
     fout.flush();
 
     cout << "#@训练词表:" << endl;
     fout << "#@训练词表:" << endl;
     size_len = cds.train_w.size();
     for(int i =0 ; i<size_len; ++i)
-        fout << i << "-" << cds.train_w[i] << endl;
+        fout << i << "$" << cds.train_w[i] << endl;
     fout.flush();
 
     fout << "#@特征词表:" << endl;
     cout << "#@特征词表:" << endl;
     for(it = cds.useful_words.begin(); it != cds.useful_words.end(); ++it)
-        fout << it->first << "-" << it->second << endl;
+        fout << it->first << "$" << it->second << endl;
     fout.flush();
 
     fout << "#@特征映射表:" << endl;
     cout << "#@特征映射表:" << endl;
     for(it = cds.n_ft_index.begin(); it != cds.n_ft_index.end(); ++it)
-        fout << it->first << "-" << it->second << endl;
+        fout << it->first << "$" << it->second << endl;
     fout.flush();
 
     fout << "#@熵权值:" << endl;
     cout << "#@熵权值:" << endl;
     size_len = cds.n_weight.size();
     for(int i =0; i<size_len; ++i)
-        fout << i << "-" << cds.n_weight[i] << endl;
+        fout << i << "$" << cds.n_weight[i] << endl;
     fout.flush();
 
     cout << "SAVE FINISHED!" << endl;
@@ -453,7 +453,7 @@ bool load_train_data(CLASS_DATA_STRUCT &cds, string filename)
          if ( curr_cat == "训练标签:")
         {
             //vector<string> tokens = split(line,'-');
-            int n_pos = line.find_first_of("-");
+            int n_pos = line.find_first_of("$");
 
             if(n_pos != -1)
             {
@@ -471,7 +471,7 @@ bool load_train_data(CLASS_DATA_STRUCT &cds, string filename)
         }
         else if ( curr_cat == "训练词表:")
         { 
-            vector<string> tokens = split(line,'-');
+            vector<string> tokens = split(line,'$');
             if ( atoi(tokens[0].c_str()) != curr_index)
             {
                 cerr << "Error for mismatch: " << tokens[0].c_str() << "~" << curr_index << endl;
@@ -484,7 +484,7 @@ bool load_train_data(CLASS_DATA_STRUCT &cds, string filename)
         }
         else if ( curr_cat == "特征词表:")
         {
-            int n_pos = line.find_first_of("-");
+            int n_pos = line.find_first_of("$");
 
             string str1 = line.substr(0, n_pos);
             string str2 = line.substr(n_pos + 1);
@@ -495,7 +495,7 @@ bool load_train_data(CLASS_DATA_STRUCT &cds, string filename)
         else if ( curr_cat == "特征映射表:")
         {
 
-            int n_pos = line.find_first_of("-");
+            int n_pos = line.find_first_of("$");
 
             string str1 = line.substr(0, n_pos);
             string str2 = line.substr(n_pos + 1);
@@ -505,7 +505,7 @@ bool load_train_data(CLASS_DATA_STRUCT &cds, string filename)
         }
         else if ( curr_cat == "熵权值:")
         {
-            int n_pos = line.find_first_of("-");
+            int n_pos = line.find_first_of("$");
 
             string str1 = line.substr(0, n_pos);
             string str2 = line.substr(n_pos + 1);
@@ -539,13 +539,9 @@ bool load_train_data(CLASS_DATA_STRUCT &cds, string filename)
     cout << "TOTAL LENGTH INFO:" << endl;
     cout << "\tTRAIN_TAG:" << cds.train_tags.size() << endl;
     cout << "\tTRAIN_WORD_ID:" << cds.train_w_id.size() << endl;
-    cout << "\tSORTED_WSCORES:" << cds.sorted_wscores.size() << endl;
-    cout << "\tTRAIN&TEST_INFO:" << cds.train_info.size() << endl;
-    for (int i = 1; i< cds.train_tags.size(); i++)
-    {
-        cout << "\t\t[TRAIN]" << cds.train_tags[i] << ":" << cds.train_info[i].size() << endl;
-        cout << "\t\t[TEST ]" << cds.train_tags[i] << ":" << cds.test_info[i].size() << endl;
-    }
+    cout << "\tUSEFUL_WORD:" << cds.useful_words.size() << endl;
+    cout << "\tFT_INDEX:" << cds.n_ft_index.size() << endl;
+    cout << "\tEntropyWeights:" << cds.n_weight.size() << endl;
 
     fin.close();
 

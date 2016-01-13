@@ -17,11 +17,12 @@ static void usage(void)
 {
     cout << "  **************************************************************" << endl;
     cout << "    USAGE:" <<endl;
-    cout << "    classify [ -d datadir] [-b best_n] [-t text] [-i num] [-v] [-h] [-e] [-f]" << endl;
+    cout << "    classify [ -d datadir] [-b best_n] [-i num] [-t text] [-x mode] [-v] [-h] [-e] [-f]" << endl;
     cout << "      -d datadir 指向训练数据的位置" << endl;
     cout << "      -b best_n  卡方分布选取最优词的数目" << endl;
-    cout << "      -t text     需要测试的文本 " << endl;
     cout << "      -i num      需要迭代的次数 " << endl;
+    cout << "      -t text     需要测试的文本 " << endl;
+    cout << "      -x mode     训练模式(megam, gis) " << endl;
     cout << "      -v           显示更多处理信息 " << endl;
     cout << "      -e           测试算法各个参数下的性能 " << endl;
     cout << "      -f           快速模式，加载训练结果和参数" << endl;
@@ -40,6 +41,7 @@ int main(int argc, char** argv)
     bool eval_mode = false;
     int iter_count = 100;
     bool fast_mode = false;
+    cds.train_type = max_ent_megam;
 
     string str_test = "早先来自奥迪内部消息称，奥迪2016年将在工厂和设备领域投资33亿欧元。根据奥迪上年发布的中期发展规划，2015年至2019年，奥迪将总计投资170亿欧元，折合平均每年投资3";
 
@@ -70,6 +72,10 @@ int main(int argc, char** argv)
             case 'f':
                 fast_mode = true;
                 break;
+            case 'x':
+                if( strcmp(optarg, "gis") == 0)
+                    cds.train_type = max_ent_gis;
+                break;
             case 'h':
             default:
                 usage();
@@ -93,7 +99,7 @@ int main(int argc, char** argv)
         else
         {
             cout << "MISSING DUMP DATA!" << endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
     }
     else if(!eval_mode)

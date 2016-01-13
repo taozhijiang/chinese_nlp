@@ -21,7 +21,7 @@
 using namespace std;
 
 
-static bool generate_encode_gis(CLASS_DATA_STRUCT &cds, int tag_id, 
+static bool generate_encode(CLASS_DATA_STRUCT &cds, int tag_id, 
         const vector<int>& from, map<int, double>& to)
 {
     int tmp_key = 0;
@@ -43,36 +43,20 @@ static bool generate_encode_gis(CLASS_DATA_STRUCT &cds, int tag_id,
         }
     }
 
-     // corr relation
-    to[FT_SIZE] = (cds.BEST_N + 1 - corr_count);
-
-    return true;
-}
-
-
-static bool generate_encode_megam(CLASS_DATA_STRUCT &cds, int tag_id, 
-        const vector<int>& from, map<int, int>& to)
-{
-    int tmp_key = 0;
-    int corr_count = 0;
-    int FT_SIZE = cds.n_ft_index.size();
-
-    to.clear();
-
-    for (int i = 0; i < from.size(); ++i)  //每个词
+    if( cds.train_type == max_ent_gis)
     {
-        if ( cds.useful_words.find(from[i]) != cds.useful_words.end())
-        {
-            tmp_key = from[i] << TAG_SHIFT | tag_id;
-            if(cds.n_ft_index.find(tmp_key) != cds.n_ft_index.end())
-            {
-                ++ corr_count;
-                to[cds.n_ft_index[tmp_key]] = 1;
-            }
-        }
+        // corr relation
+        to[FT_SIZE] = (cds.BEST_N + 1 - corr_count);   
     }
-
-    to[FT_SIZE + tag_id - 1] = 1;   // __always_on__
+    else if( cds.train_type == max_ent_megam)
+    {
+        to[FT_SIZE + tag_id - 1] = 1;   // __always_on__
+    }
+    else
+    {
+        cerr << "UNKNOWN TRAIN TYPE:" << endl;
+        exit(EXIT_FAILURE);
+    }
 
     return true;
 }
@@ -183,8 +167,6 @@ bool train_classifyer_megam(CLASS_DATA_STRUCT &cds, int best_n, bool eval_mode)
         }
     }
 
-
-    map<int, int> ::iterator it_ii;
     map<int, double> ::iterator it_id;
     // Write a training file for megam.
     ofstream fout(TMP_INPUT_FILE);
@@ -193,7 +175,7 @@ bool train_classifyer_megam(CLASS_DATA_STRUCT &cds, int best_n, bool eval_mode)
     for (it = cds.train_info.begin(); it != cds.train_info.end(); ++it)
     {
         int tag_id = it->first;
-        map<int, int> en_features;
+        map<int, double> en_features;
 
         vector< vector<int> > t_items = it->second;  //训练文档
         for ( int i = 0; i< t_items.size(); i++ )
@@ -205,14 +187,14 @@ bool train_classifyer_megam(CLASS_DATA_STRUCT &cds, int best_n, bool eval_mode)
             if(t_item.empty())
                 continue;
 
-            fout << tag_id;
+            fout << (tag_id -1);    // ATTENTION: SHOULB BEGIN WITH 0!!!
 
             for( int pre_tid = 1; pre_tid < cds.train_tags.size(); ++ pre_tid)
             {
-                generate_encode_megam(cds, pre_tid, t_item, en_features);
+                generate_encode(cds, pre_tid, t_item, en_features);
                 fout << " #";
-                for(it_ii = en_features.begin(); it_ii != en_features.end(); ++it_ii)
-                    fout <<" " << it_ii->first;
+                for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
+                    fout <<" " << it_id->first;
             }
             fout << endl;
         }
@@ -280,6 +262,24 @@ bool train_classifyer_megam(CLASS_DATA_STRUCT &cds, int best_n, bool eval_mode)
         cds.n_weight.push_back( weights[i]*log2(M_E) ); //ln->log2
 
     cout << "MEGAM FINISHED with size:" << cds.n_weight.size() << endl;
+
+    if(!eval_mode)
+    {
+
+        if(!cds.data_path.length())
+        {
+            cout << "LOADED TYPE, DO NOT STORE TO FILE!" << endl;
+        }
+        else
+        {
+            cout << "SAVE DATA TO FILE!" << endl;
+            save_train_data(cds, dump_file);   
+        }
+
+        cout << "TRAIN DONE, RELEASE TRAIN DATA!" << endl;
+        cds.train_info.clear();   
+        cds.test_info.clear();
+    }
 
     return true;
 }
@@ -385,7 +385,7 @@ bool train_classifyer_gis(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bo
             unique_vector(t_item);
             map<int, double> en_features;
 
-            generate_encode_gis(cds, tag_id, t_item, en_features);
+            generate_encode(cds, tag_id, t_item, en_features);
             for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
             {
                 empirical_fcount[it_id->first] += it_id->second;
@@ -436,7 +436,7 @@ bool train_classifyer_gis(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bo
 
                 for( int pre_tid = 1; pre_tid < cds.train_tags.size(); ++ pre_tid)
                 {
-                    generate_encode_gis(cds, pre_tid, t_item, en_features);
+                    generate_encode(cds, pre_tid, t_item, en_features);
                     
                     total = 0.0f;
                     for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
@@ -455,7 +455,7 @@ bool train_classifyer_gis(CLASS_DATA_STRUCT &cds, int best_n, int iter_count, bo
                 {
                     prob = pdist[pre_tid];
 
-                    generate_encode_gis(cds, pre_tid, t_item, en_features);
+                    generate_encode(cds, pre_tid, t_item, en_features);
                     for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
                     {
                         estimated_fcount[it_id->first] += prob* it_id->second;
@@ -565,19 +565,19 @@ static bool eval_classifyer(CLASS_DATA_STRUCT &cds, int best_n, double& store)
             double total = 0.0f;
             map<int, double> prob_dict;
             map<int, double> pdist;
-            map<int, int> en_features;
-            map<int, int> ::iterator it_ii;
+            map<int, double> en_features;
+            map<int, double> ::iterator it_id;
             double max_prob = 0.0;
             int     max_tag_id = -1;
 
             for( int pre_tid = 1; pre_tid < cds.train_tags.size(); ++ pre_tid)
             {
-                generate_encode_megam(cds, pre_tid, t_item, en_features);
+                generate_encode(cds, pre_tid, t_item, en_features);
                 
                 total = 0.0f;
-                for(it_ii = en_features.begin(); it_ii != en_features.end(); ++it_ii)
+                for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
                 {
-                    total += cds.n_weight[it_ii->first] * it_ii->second;
+                    total += cds.n_weight[it_id->first] * it_id->second;
                 }
                 prob_dict[pre_tid] = total;
             }
@@ -586,7 +586,6 @@ static bool eval_classifyer(CLASS_DATA_STRUCT &cds, int best_n, double& store)
             
             // TTT-2 calc fcount
             // 更新 estimate_fcount
-            map<int, double> ::iterator it_id;
             for(it_id = pdist.begin(); it_id != pdist.end(); ++it_id)
             {
                 //cout << " " << cds.train_tags[it_id->first] << ":" << it_id->second << endl;
@@ -640,18 +639,17 @@ bool predict_it(CLASS_DATA_STRUCT &cds, const vector<std::string> store,
     double total = 0.0f;
     map<int, double> prob_dict;
     map<int, double> pdist;
-    map<int, int> en_features;
-    map<int, int> ::iterator it_ii;
+    map<int, double> en_features;
     map<int, double> ::iterator it_id;
 
     for( int pre_tid = 1; pre_tid < cds.train_tags.size(); ++ pre_tid)
     {
-        generate_encode_megam(cds, pre_tid, word_id, en_features);
+        generate_encode(cds, pre_tid, word_id, en_features);
 
         total = 0.0f;
-        for(it_ii = en_features.begin(); it_ii != en_features.end(); ++it_ii)
+        for(it_id = en_features.begin(); it_id != en_features.end(); ++it_id)
         {
-            total += cds.n_weight[it_ii->first] * it_ii->second;
+            total += cds.n_weight[it_id->first] * it_id->second;
         }
         prob_dict[pre_tid] = total;
     }

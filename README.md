@@ -36,5 +36,9 @@ http://rzcoding.blog.163.com/
 - 参考：
 http://www.fuqingchuan.com/2015/03/776.html
 http://www.nltk.org/_modules/nltk/classify/maxent.html
+http://www.umiacs.umd.edu/~hal/megam/index.html
 - NOTE：
 基本是按照nltk的GIS算法翻译过来的，没有实现IIS，所以训练的速度非常的慢。
+- MEGAM
+添加了MEGAM部分，底层调用的megam是基于L-BFGS实现的，所以速度还是挺快的，有实用价值了。另外底层调用的megam是
+二进制程序（32位）的，所以你的系统要支持32位的运行库（dnf install glibc.i686）

@@ -54,7 +54,7 @@ typedef struct _CLASS_DATA_STRUCT
 
 } CLASS_DATA_STRUCT, *P_CLASS_DATA_STRUCT;
 
-static const int TAG_SHIFT = 16;
+static const int TAG_SHIFT = 8; // 256足够足够了
 
 
 bool prep_train_data(CLASS_DATA_STRUCT &cds, string dirname);
