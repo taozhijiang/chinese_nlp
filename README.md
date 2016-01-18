@@ -42,3 +42,7 @@ http://www.umiacs.umd.edu/~hal/megam/index.html
 - MEGAM
 添加了MEGAM部分，底层调用的megam是基于L-BFGS实现的，所以速度还是挺快的，有实用价值了。另外底层调用的megam是
 二进制程序（32位）的，所以你的系统要支持32位的运行库（dnf install glibc.i686）
+
+## 深度学习分词
+- 参考：
+http://xccds1977.blogspot.com/2015/11/blog-post_25.html
