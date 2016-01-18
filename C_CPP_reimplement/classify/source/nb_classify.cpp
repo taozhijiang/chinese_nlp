@@ -176,7 +176,7 @@ void eval_classifyers_and_args(CLASS_DATA_STRUCT &cds)
     
     cout << "TESTING CLASSIFIER!\n"<< endl;
 
-    int best_ns[] = {2000, 4000, 6000, 8000, 10000, 12000, 15000, 20000, 25000, 30000; 35000};
+    int best_ns[] = {2000, 4000, 6000, 8000, 10000, 12000, 15000, 20000, 25000, 30000, 35000};
 
     map<int, double> ret;
 
