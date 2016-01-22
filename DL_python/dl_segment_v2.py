@@ -4,6 +4,7 @@ import os
 import pickle
 import nltk
 import numpy as np
+np.random.seed(25535)  
 import sys
 sys.setrecursionlimit(1000000) #设置为一百万，否则dump数据的时候显示递归层次过多！
 
@@ -19,6 +20,11 @@ from keras.layers.core import Reshape, Flatten , Dense, Dropout, Activation
 
 # skip-gram and CBOW models
 from gensim.models import word2vec
+
+# store and load
+from keras.models import model_from_json  
+from keras.callbacks import EarlyStopping  
+
 
 tagindex = {'B':0, 'E':1, 'M':2, 'S':3 }
 indextag = {0:'B', 1:'E', 2:'M', 3:'S'}
@@ -122,19 +128,20 @@ def build_dl_model():
     with open(WORD2VEC_FILE) as fin:
         while True:
             try:
-                for each_line in fin:
-                    if not each_line:
-                        continue
-                    line_num += 1
-                    if not (line_num % 2000): print("C:%d" %(line_num))
-                    line_items = each_line.split()
-                    wvecs = []
-                    for item in line_items:
-                        for w in item:
-                            wordindex(w) # USE THE SIDE EFFECT, 单个字的vector
-                            wvecs.append(w)
-                            
-                    word2vec_str.append(wvecs)
+                each_line = fin.readline()
+                if not each_line:
+                    break_flag = True
+                    print("处理完毕！")
+                    break
+                line_num += 1
+                if not (line_num % 2000): print("C:%d" %(line_num))
+                line_items = each_line.split()
+                wvecs = []
+                for item in line_items:
+                    for w in item:
+                        wordindex(w) # USE THE SIDE EFFECT, 单个字的vector
+                        wvecs.append(w)
+                word2vec_str.append(wvecs)
             except UnicodeDecodeError as e:
                 print('Unicode Error! filename=%s, line_num=%d'%(WORD2VEC_FILE, line_num))
                 pass
@@ -146,13 +153,15 @@ def build_dl_model():
     with open(TRAIN_FILE) as fin:
         while True:
             try:
-                for each_line in fin:
-                    if not each_line:
-                        continue
-                    line_num += 1
-                    if not (line_num % 2000): print("C:%d" %(line_num))
-                    line_items = each_line.split()                        
-                    input_file_str.append(line_items)
+                each_line = fin.readline()
+                if not each_line:
+                    break_flag = True
+                    print("处理完毕！")
+                    break
+                line_num += 1
+                if not (line_num % 2000): print("C:%d" %(line_num))
+                line_items = each_line.split()                        
+                input_file_str.append(line_items)
             except UnicodeDecodeError as e:
                 print('Unicode Error! filename=%s, line_num=%d'%(TRAIN_FILE, line_num))
                 pass
@@ -215,18 +224,21 @@ def build_dl_model():
 
     print('Stacking LSTM...')
     model = Sequential()
+    #使用已经训练的词向量来初始化Embedding层
     model.add(Embedding(input_dim = maxfeatures, output_dim = word_dim, input_length=maxlen, weights=[np.array(wordvector)]))
     model.add(LSTM(output_dim=hidden_units, return_sequences =True))
     model.add(LSTM(output_dim=hidden_units, return_sequences =False))
+    #防止过拟合，增加训练速度
     model.add(Dropout(0.5))
     model.add(Dense(nb_classes))
     model.add(Activation('softmax'))
     model.compile(loss='categorical_crossentropy', optimizer='adam')
 
     print("Train...")
+    early_stopping = EarlyStopping(monitor='val_loss', patience=2)  
     result = model.fit(train_X, Y_train, batch_size=batch_size, 
-                       nb_epoch=4, validation_data = (test_X,Y_test), show_accuracy=True)
-    score = model.evaluate(test_X, Y_test, batch_size=batch_size)
+                       nb_epoch=20, validation_data = (test_X,Y_test), show_accuracy=True, callbacks=[early_stopping])
+    score = model.evaluate(test_X, Y_test, batch_size=batch_size, show_accuracy=True, verbose=1)
     print("Test Score:%d" %(score))
     
     return model
@@ -234,9 +246,11 @@ def build_dl_model():
 
 if __name__ == "__main__":
     
-    DUMP_FILE = "dump.dat_v2"    
+    DUMP_FILE           = "./dump_dir/dl_segment_wordindex.dat_v2" 
+    model_json_fname    = "./dump_dir/dl_segment_model.json_v2"
+    model_weights_fname = "./dump_dir/dl_segment_model.weights_v2"   
     
-    if os.path.exists(DUMP_FILE):
+    if os.path.exists(DUMP_FILE) and os.path.exists(model_json_fname) and os.path.exists(model_weights_fname):
         print("LOADING DL...")
 
         dump_data = []
@@ -244,7 +258,10 @@ if __name__ == "__main__":
             dump_data = pickle.load(fin)
             word2index = dump_data[0]
             index2word = dump_data[1]
-            dl_model = dump_data[2]   
+            #dl_model = dump_data[2]   
+        dl_model = model_from_json(open(model_json_fname).read()) 
+        dl_model.load_weights(model_weights_fname) 
+
         print("DONE!")
         
     else:
@@ -256,18 +273,19 @@ if __name__ == "__main__":
         with open(DUMP_FILE,'wb', -1) as fout:
             dump_data.append(word2index)
             dump_data.append(index2word)
-            dump_data.append(dl_model)
+            #dump_data.append(dl_model)
             pickle.dump(dump_data, fout, -1);   
-        print("DONE!")
-        
-    temp_txt = '国家食药监总局发布通知称，酮康唑口服制剂因存在严重肝毒性不良反应，即日起停止生产销售使用。'
-    temp_txt = list(temp_txt)
-    temp_num = sent2num(temp_txt)
-    ret = predict_num(temp_txt, temp_num, dl_model)  
-    print(ret)
-    
-    temp_txt = "首先是个民族问题，民族的感情问题"
-    temp_txt = list(temp_txt)
-    temp_num = sent2num(temp_txt)
-    ret = predict_num(temp_txt, temp_num, dl_model)     
-    print(ret)
+        json_string = dl_model.to_json()
+        open(model_json_fname,'w').write(json_string)  
+        dl_model.save_weights(model_weights_fname)   
+        print("DONE!") 
+
+    test_list = ['中东和平的建设者、中东发展的推动者、中东工业化的助推者、中东稳定的支持者、中东民心交融的合作伙伴——习近平主席在演讲中为中国-中东关系发展指明的方向，切合地区实际情况，照顾地区国家关切，为摆在国际社会面前的“中东之问”给出了中国的答案。', \
+            '2014年6月，习近平在中阿合作论坛北京部长级会议上提出，中阿共建“一带一路”，构建以能源合作为主轴，以基础设施建设、贸易和投资便利化为两翼，以核能、航天卫星、新能源三大高新领域为新的突破口的“1+2+3”合作格局。', \
+            '在此次落马的16人里面，级别最高的是连城县委原书记江国河。履历显示，江国河1963年出生，龙岩市永定县高头乡人。被调查时，他已在福建省能源集团有限责任公司董事、纪委书记的位子上干了两年。', \
+            '机智堂是新浪手机推出的新栏目，风趣幽默是我们的基调，直白简单地普及手机技术知识是我们的目的。我们谈手机，也谈手机圈的有趣事，每月定期更新，搞机爱好者们千万不能错过。']    
+    for temp_txt in test_list:
+        temp_txt = list(temp_txt)
+        temp_num = sent2num(temp_txt)
+        ret = predict_num(temp_txt, temp_num, dl_model)  
+        print(ret)
